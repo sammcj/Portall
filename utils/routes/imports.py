@@ -177,11 +177,13 @@ class IgnoreAliasesLoader(Reader, Scanner, Parser, Composer, Constructor, Resolv
     def fetch_alias(self, index):
         return None
 
+
 def import_docker_compose(content):
     lines = content.split('\n')
     entries = []
     current_service = None
     current_image = None
+    service_ports = {}
     in_ports_section = False
 
     logger.debug("Starting to parse Docker Compose file")
@@ -195,6 +197,7 @@ def import_docker_compose(content):
             current_service = line.split(':')[0]
             current_image = None
             in_ports_section = False
+            service_ports[current_service] = []
             logger.debug(f"Found service: {current_service}")
             continue
 
@@ -216,26 +219,32 @@ def import_docker_compose(content):
             logger.debug(f"Parsing port mapping: {port_mapping}")
             try:
                 parsed_port, protocol = parse_port_and_protocol(port_mapping)
-                description = current_image if current_image else current_service
-
-                if current_service and any(db in current_service.lower() for db in ['db', 'database', 'mysql', 'postgres', 'mariadb', 'mailhog']):
-                    logger.debug(f"Skipping database service: {current_service}")
-                    continue
-
-                entries.append({
-                    'ip': '127.0.0.1',
-                    'nickname': None,
-                    'port': parsed_port,
-                    'description': description,
-                    'port_protocol': protocol
-                })
-
-                logger.info(f"Added entry: IP: 127.0.0.1, Port: {parsed_port}, Protocol: {protocol}, Description: {description}")
+                service_ports[current_service].append((parsed_port, protocol))
+                logger.debug(f"Added port {parsed_port} ({protocol}) to service {current_service}")
             except ValueError as e:
                 logger.warning(f"Warning: {str(e)} for service {current_service}")
 
+    # Create entries from collected data
+    for service, ports in service_ports.items():
+        for port, protocol in ports:
+            description = service  # Use the service name as the description
+            if service and any(db in service.lower() for db in ['db', 'database', 'mysql', 'postgres', 'mariadb', 'mailhog']):
+                logger.debug(f"Skipping database service: {service}")
+                continue
+
+            entries.append({
+                'ip': '127.0.0.1',
+                'nickname': None,
+                'port': port,
+                'description': description,
+                'port_protocol': protocol
+            })
+
+            logger.info(f"Added entry: IP: 127.0.0.1, Port: {port}, Protocol: {protocol}, Description: {description}")
+
     logger.info(f"Total entries found: {len(entries)}")
     return entries
+
 
 
 def import_json(content):
@@ -283,6 +292,7 @@ def parse_port_and_protocol(port_value):
     Raises:
         ValueError: If no valid port number can be found
     """
+    logger.debug(f"Parsing port value: {port_value}")
     # Remove any leading/trailing whitespace
     port_value = port_value.strip()
 
