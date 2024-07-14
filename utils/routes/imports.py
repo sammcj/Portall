@@ -172,45 +172,57 @@ class IgnoreAliasesLoader(Reader, Scanner, Parser, Composer, Constructor, Resolv
         return None
 
 def import_docker_compose(content):
-    try:
-        data = yaml.load(content, Loader=IgnoreAliasesLoader)
-        entries = []
+    lines = content.split('\n')
+    entries = []
+    current_service = None
+    current_image = None
+    in_ports_section = False
 
-        if isinstance(data, dict):
-            services = data.get('services', {})
+    for line in lines:
+        line = line.strip()
+        
+        # Check for service definition
+        if re.match(r'^[a-zA-Z0-9_-]+:', line):
+            current_service = line.split(':')[0]
+            current_image = None
+            in_ports_section = False
+            continue
 
-            for service_name, service_config in services.items():
-                if any(db in service_name.lower() for db in ['db', 'database', 'mysql', 'postgres', 'mariadb', 'mailhog']):
+        # Check for image
+        if line.startswith('image:'):
+            current_image = line.split('image:')[1].strip()
+            continue
+
+        # Check for ports section
+        if line == 'ports:':
+            in_ports_section = True
+            continue
+
+        # Parse port mapping
+        if in_ports_section and line.startswith('-'):
+            port_mapping = line.split('-')[1].strip().replace('"', '').replace("'", '')
+            try:
+                parsed_port, protocol = parse_port_and_protocol(port_mapping)
+                description = current_image if current_image else current_service
+
+                if current_service and any(db in current_service.lower() for db in ['db', 'database', 'mysql', 'postgres', 'mariadb', 'mailhog']):
                     continue
 
-                ports = service_config.get('ports', [])
-                image = service_config.get('image', '')
+                entries.append({
+                    'ip': '127.0.0.1',
+                    'nickname': None,
+                    'port': parsed_port,
+                    'description': description,
+                    'port_protocol': protocol
+                })
 
-                for port_mapping in ports:
-                    if isinstance(port_mapping, str):
-                        try:
-                            parsed_port, protocol = parse_port_and_protocol(port_mapping)
+                print(f"Added entry: IP: 127.0.0.1, Port: {parsed_port}, Protocol: {protocol}, Description: {description}")
+            except ValueError as e:
+                print(f"Warning: {str(e)} for service {current_service}")
 
-                            description = image if image else service_name
+    print(f"Total entries found: {len(entries)}")
+    return entries
 
-                            entries.append({
-                                'ip': '127.0.0.1',
-                                'nickname': None,
-                                'port': parsed_port,
-                                'description': description,
-                                'port_protocol': protocol
-                            })
-
-                            print(f"Added entry: IP: 127.0.0.1, Port: {parsed_port}, Protocol: {protocol}, Description: {description}")
-
-                        except ValueError as e:
-                            print(f"Warning: {str(e)} for service {service_name}")
-
-        print(f"Total entries found: {len(entries)}")
-        return entries
-
-    except Exception as e:
-        raise ValueError(f"Invalid Docker-Compose YAML format: {str(e)}")
 
 def import_json(content):
     """
