@@ -18,4 +18,3 @@ SQLAlchemy==2.0.31
 typing_extensions==4.12.2
 Werkzeug==3.0.3
 zipp==3.19.2
-ruamel.yaml==0.18.6

@@ -5,6 +5,12 @@ import json                                     # For parsing JSON data
 import re                                       # For regular expressions
 import yaml                                     # For parsing YAML data
 from yaml.loader import SafeLoader
+from yaml.reader import Reader
+from yaml.scanner import Scanner
+from yaml.parser import Parser
+from yaml.composer import Composer
+from yaml.constructor import Constructor
+from yaml.resolver import Resolver
 
 # External Imports
 from flask import Blueprint                     # For creating a blueprint
@@ -146,9 +152,28 @@ def construct_merge(loader, node):
 
 CustomLoader.add_constructor('tag:yaml.org,2002:merge', construct_merge)
 
+
+class IgnoreAliasesLoader(Reader, Scanner, Parser, Composer, Constructor, Resolver):
+    def __init__(self, stream):
+        Reader.__init__(self, stream)
+        Scanner.__init__(self)
+        Parser.__init__(self)
+        Composer.__init__(self)
+        Constructor.__init__(self)
+        Resolver.__init__(self)
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            event = self.get_event()
+            return self.compose_scalar_node(event.anchor)
+        return Composer.compose_node(self, parent, index)
+
+    def fetch_alias(self, index):
+        return None
+
 def import_docker_compose(content):
     try:
-        data = yaml.load(content, Loader=CustomLoader)
+        data = yaml.load(content, Loader=IgnoreAliasesLoader)
         entries = []
 
         if isinstance(data, dict):
