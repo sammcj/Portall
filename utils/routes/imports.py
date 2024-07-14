@@ -22,6 +22,12 @@ from flask import session                       # For storing session data
 # Local Imports
 from utils.database import db, Port             # For accessing the database models
 
+# Setup logging
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 # Create the blueprint
 imports_bp = Blueprint('imports', __name__)
 
@@ -178,34 +184,42 @@ def import_docker_compose(content):
     current_image = None
     in_ports_section = False
 
-    for line in lines:
+    logger.debug("Starting to parse Docker Compose file")
+
+    for line_num, line in enumerate(lines, 1):
         line = line.strip()
+        logger.debug(f"Line {line_num}: {line}")
         
         # Check for service definition
-        if re.match(r'^[a-zA-Z0-9_-]+:', line):
+        if re.match(r'^[a-zA-Z0-9_-]+:', line) and not line.startswith(' '):
             current_service = line.split(':')[0]
             current_image = None
             in_ports_section = False
+            logger.debug(f"Found service: {current_service}")
             continue
 
         # Check for image
         if line.startswith('image:'):
             current_image = line.split('image:')[1].strip()
+            logger.debug(f"Found image for {current_service}: {current_image}")
             continue
 
         # Check for ports section
-        if line == 'ports:':
+        if 'ports:' in line:
             in_ports_section = True
+            logger.debug(f"Entered ports section for {current_service}")
             continue
 
         # Parse port mapping
-        if in_ports_section and line.startswith('-'):
-            port_mapping = line.split('-')[1].strip().replace('"', '').replace("'", '')
+        if in_ports_section and ('-' in line or ':' in line):
+            port_mapping = line.split('-')[-1].strip().replace('"', '').replace("'", '')
+            logger.debug(f"Parsing port mapping: {port_mapping}")
             try:
                 parsed_port, protocol = parse_port_and_protocol(port_mapping)
                 description = current_image if current_image else current_service
 
                 if current_service and any(db in current_service.lower() for db in ['db', 'database', 'mysql', 'postgres', 'mariadb', 'mailhog']):
+                    logger.debug(f"Skipping database service: {current_service}")
                     continue
 
                 entries.append({
@@ -216,11 +230,11 @@ def import_docker_compose(content):
                     'port_protocol': protocol
                 })
 
-                print(f"Added entry: IP: 127.0.0.1, Port: {parsed_port}, Protocol: {protocol}, Description: {description}")
+                logger.info(f"Added entry: IP: 127.0.0.1, Port: {parsed_port}, Protocol: {protocol}, Description: {description}")
             except ValueError as e:
-                print(f"Warning: {str(e)} for service {current_service}")
+                logger.warning(f"Warning: {str(e)} for service {current_service}")
 
-    print(f"Total entries found: {len(entries)}")
+    logger.info(f"Total entries found: {len(entries)}")
     return entries
 
 
