@@ -3,8 +3,8 @@
 # Standard Imports
 import json                                     # For parsing JSON data
 import re                                       # For regular expressions
-import yaml                                     # For parsing YAML data
-from ruamel.yaml import YAML
+from ruamel.yaml import YAML                    # For parsing YAML data
+from ruamel.yaml.constructor import SafeConstructor, ConstructorError
 
 # External Imports
 from flask import Blueprint                     # For creating a blueprint
@@ -137,9 +137,31 @@ def import_caddyfile(content):
     return entries
 
 
+
+class IgnoreAliasesConstructor(SafeConstructor):
+    def flatten_mapping(self, node):
+        return node
+
+    def construct_yaml_map(self, node):
+        data = {}
+        yield data
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node)
+            value = self.construct_object(value_node)
+            data[key] = value
+
+    def fetch_alias(self, node):
+        return self.construct_scalar(node)
+
+class IgnoreAliasesLoader(YAML):
+    def __init__(self):
+        super().__init__()
+        self.Constructor = IgnoreAliasesConstructor
+        self.allow_duplicate_keys = True
+
 def import_docker_compose(content):
     try:
-        yaml = YAML(typ='safe')
+        yaml = IgnoreAliasesLoader()
         data = yaml.load(content)
         entries = []
 
