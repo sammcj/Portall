@@ -3,8 +3,8 @@
 # Standard Imports
 import json                                     # For parsing JSON data
 import re                                       # For regular expressions
-from ruamel.yaml import YAML                    # For parsing YAML data
-from ruamel.yaml.constructor import SafeConstructor, ConstructorError
+import yaml                                     # For parsing YAML data
+from yaml.loader import SafeLoader
 
 # External Imports
 from flask import Blueprint                     # For creating a blueprint
@@ -137,32 +137,18 @@ def import_caddyfile(content):
     return entries
 
 
+class CustomLoader(SafeLoader):
+    def ignore_aliases(self, node):
+        return True
 
-class IgnoreAliasesConstructor(SafeConstructor):
-    def flatten_mapping(self, node):
-        return node
+def construct_merge(loader, node):
+    return {}
 
-    def construct_yaml_map(self, node):
-        data = {}
-        yield data
-        for key_node, value_node in node.value:
-            key = self.construct_object(key_node)
-            value = self.construct_object(value_node)
-            data[key] = value
-
-    def fetch_alias(self, node):
-        return self.construct_scalar(node)
-
-class IgnoreAliasesLoader(YAML):
-    def __init__(self):
-        super().__init__()
-        self.Constructor = IgnoreAliasesConstructor
-        self.allow_duplicate_keys = True
+CustomLoader.add_constructor('tag:yaml.org,2002:merge', construct_merge)
 
 def import_docker_compose(content):
     try:
-        yaml = IgnoreAliasesLoader()
-        data = yaml.load(content)
+        data = yaml.load(content, Loader=CustomLoader)
         entries = []
 
         if isinstance(data, dict):
