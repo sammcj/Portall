@@ -4,6 +4,7 @@
 import json                                     # For parsing JSON data
 import re                                       # For regular expressions
 import yaml                                     # For parsing YAML data
+from yaml.loader import SafeLoader              # For loading YAML data
 
 # External Imports
 from flask import Blueprint                     # For creating a blueprint
@@ -135,9 +136,13 @@ def import_caddyfile(content):
 
     return entries
 
+class IgnoreAnchorLoader(SafeLoader):
+    def fetch_anchor(self, anchor):
+        return None
+
 def import_docker_compose(content):
     try:
-        data = yaml.load(content, Loader=yaml.FullLoader)
+        data = yaml.load(content, Loader=IgnoreAnchorLoader)
         entries = []
 
         if isinstance(data, dict):
